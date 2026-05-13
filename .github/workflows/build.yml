@@ -36,6 +36,7 @@ jobs:
             exit 1
           fi
 
+          rm -rf ./content ./templates
           mv content-private/content ./content
 
           if [ -d content-private/templates ]; then
