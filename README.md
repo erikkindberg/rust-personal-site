@@ -1,70 +1,102 @@
 # Rust Static Site Generator
 
-A minimal static site generator written in Rust that converts Markdown to HTML with section-based navigation and breadcrumbs.
+A minimal static site generator written in Rust that converts Markdown into a static site with section navigation, breadcrumbs, blog cards, and pagination.
 
 ## What it does
 
 - Reads Markdown files from `content/`
-- Converts them to HTML pages
-- Writes generated files to `public/` preserving folder structure
-- Copies non-Markdown files (like PDFs/images) from `content/` to `public/`
-- Uses `templates/page.html` as the page template
-- **Automatically generates section-based navigation**
-- **Adds breadcrumbs** showing page hierarchy
-- **Builds blog index cards + pagination** from `content/blog/*.md`
-- **Supports blog post title/subheading template** from Markdown headings
+- Converts them into HTML pages
+- Writes generated files to `public/` while preserving folder structure
+- Copies non-Markdown files, like images and PDFs, from `content/` to `public/`
+- Supports a multi-template layout system
+- Generates blog index cards and pagination from `content/blog/*.md`
+- Supports blog post title/subheading rendering from Markdown headings
 
-## Structure & Navigation
+## How the templates work
+
+This project uses three template files from `templates/`:
+
+### `templates/page.html`
+The shared outer shell for every page.
+
+It is responsible for:
+- the document structure
+- the `<head>` section
+- the site-wide CSS
+- the navigation area
+- the breadcrumbs area
+- the page content placeholder
+
+Placeholders used in this template:
+- `{{title}}` - page title
+- `{{robots_meta}}` - optional robots meta tag
+- `{{nav}}` - top navigation HTML
+- `{{breadcrumbs}}` - breadcrumb HTML
+- `{{content}}` - page body HTML
+
+### `templates/blog_index.html`
+The blog landing/listing template.
+
+It is responsible for the internal blog page layout, including:
+- blog intro text
+- blog post cards
+- pagination controls
+
+Placeholders used in this template:
+- `{{blog_intro}}`
+- `{{blog_posts}}`
+- `{{pagination}}`
+
+### `templates/blog_post.html`
+The individual blog post template.
+
+It is responsible for how a single blog post is structured on the page.
+
+Placeholders used in this template:
+- `{{post_title}}`
+- `{{post_subheading_block}}`
+- `{{post_body}}`
+
+### Template behavior
+
+The generator fails if any of these files are missing. There are no embedded fallback templates anymore.
+
+## Content structure
 
 ### Sections
-Directories in `content/` become sections. The top-level nav shows all sections with links to each section's index page. The current section is highlighted.
+Directories in `content/` become sections. The top-level navigation shows each section link, and the current section is highlighted.
 
 ### Root-level pages
-Files directly in `content/` (like `index.md`, `about.md`) don't appear as separate sections—they're just part of the home nav.
+Files directly in `content/` (like `index.md`) do not become separate sections.
 
 ### Breadcrumbs
-Each page shows:
-- **Root pages** (e.g., `about.md` → `about.html`): `Home`
-- **Section pages** (e.g., `blog/index.md`): `Home > Blog`
-- **Nested pages** (e.g., `blog/first-post.md`): `Home > Blog > First Post`
+Each page shows a breadcrumb trail, for example:
+- Root page: `Home`
+- Section page: `Home > Blog`
+- Nested page: `Home > Blog > First Post`
 
 ## Example structure
 
 ```
 content/
-├── index.md              → public/index.html (nav: Home | Blog)
+├── index.md              → public/index.html
 ├── about/
-│   └── index.md          → public/about/index.html (nav: Home | About* | Blog)
+│   └── index.md          → public/about/index.html
 ├── assets/
 │   └── cv.pdf            → public/assets/cv.pdf
 └── blog/
-    ├── index.md          → public/blog/index.html (nav: Home | About | Blog*)
-    └── first-post.md     → public/blog/first-post.html (nav: Home | About | Blog*)
+    ├── index.md          → public/blog/index.html
+    └── first-post.md     → public/blog/first-post.html
 
-*  Current section is bold
+templates/
+├── page.html
+├── blog_index.html
+└── blog_post.html
 ```
 
-## Template placeholders
+## Blog post format
 
-Your custom template can use:
-- `{{title}}` - Page title (from first `#` heading or filename)
-- `{{content}}` - Rendered HTML from Markdown
-- `{{nav}}` - Section navigation (`<nav>` with links)
-- `{{breadcrumbs}}` - Breadcrumb trail (`<div class="breadcrumbs">`)
-
-See `templates/page.html` for the default template with styling.
-
-## Run
-
-```bash
-cargo run
-```
-
-Generated pages appear in `public/`.
-
-### Blog post format
-
-For blog posts (`content/blog/*.md` except `index.md`), use:
+For blog posts in `content/blog/*.md` except `index.md`, use this pattern:
 
 ```md
 # Post Title
@@ -75,74 +107,89 @@ Post body starts here...
 
 - `#` becomes the post title
 - `##` becomes the post subheading
-- Blog index renders each post in a card linking to the post page
+- The remaining Markdown becomes the post body
+- The blog index renders each post as a card linking to the post page
 
-### Blog pagination
+## Blog pagination
 
-Set `BLOG_POSTS_PER_PAGE` to control pagination size:
+Set `BLOG_POSTS_PER_PAGE` to control how many posts appear on each page:
 
 ```bash
 BLOG_POSTS_PER_PAGE=5 cargo run
 ```
 
-## Base URL for deployments
-
-Set `BASE_URL` when your site is served from a subpath (like GitHub Pages project sites).
-
-- Personal site (`username.github.io`): leave `BASE_URL` empty
-- Project site (`username.github.io/repo-name`): set `BASE_URL=/repo-name`
-
-Examples:
+## Run locally
 
 ```bash
 cargo run
-BASE_URL=/rust-personal-site cargo run
 ```
 
-The included GitHub Actions workflow already sets `BASE_URL` to the repository name automatically.
+### Optional environment variables
 
-## Search indexing control
+- `BASE_URL` - set this when the site is served from a subpath, such as a GitHub Pages project site
+  - Example: `BASE_URL=/rust-personal-site cargo run`
+- `NOINDEX=1` - adds a robots noindex meta tag and generates a blocking `robots.txt`
 
-Set `NOINDEX=1` to add `<meta name="robots" content="noindex,nofollow,noarchive">` to every page and generate a blocking `robots.txt`.
+## Split repo setup
 
-Examples:
+If you want to keep the generator public but store content privately, use two repos:
 
-```bash
-NOINDEX=1 cargo run
-BASE_URL=/rust-personal-site NOINDEX=1 cargo run
+- Public repo: generator code
+- Private repo: Markdown content, assets, and templates
+
+### 1. Create the private content repo
+
+Create a private repo named `rust-personal-site-content` with this structure:
+
+```text
+content/
+templates/
+  page.html
+  blog_index.html
+  blog_post.html
 ```
 
-The GitHub Actions workflow currently deploys with `NOINDEX=1` for staging privacy-by-obscurity. Remove that env var when you want pages indexable.
+Put your posts, pages, images, PDFs, and template files there.
 
-## 
+### 2. Add the private repo token
 
-onte
+Create a fine-grained GitHub token with access to the private content repo and `Contents: Read` permission.
 
-1. **Create private repo** `rust-personal-site-content` with:
-   ```
-   content/
-   templates/
-     page.html
-     blog_index.html
-     blog_post.html
-   ```
+Then add it to the public repo as a secret:
+- Name: `PRIVATE_REPO_TOKEN`
+- Value: the token
 
-   `page.html` is the shared shell, while `blog_index.html` and `blog_post.html` are the page-type templates.
+### 3. Set up GitHub Actions
 
-2. **Generate Personal Access Token** (GitHub Settings → Developer settings → Personal access tokens):
-   - Scope: `repo` (read private repos)
-   - Copy the token
+The workflow in the public repo:
+- checks out the public generator code
+- checks out the private content repo
+- copies the private `content/` and `templates/` folders into the build workspace
+- runs the generator
+- deploys the generated `public/` output to GitHub Pages
 
-3. **Add to this repo** (Settings → Secrets and variables → Actions):
-   - Secret name: `PRIVATE_REPO_TOKEN`
-   - Value: Your PAT
+### 4. Work on the site
 
-4. **Local workflow**:
-   - Clone both repos
-   - Copy private `content/` into public repo workspace
-   - Run `cargo run`
-   - Don't commit `content/` (it's in `.gitignore`)
+Typical workflow:
+1. Update content or templates in the private repo
+2. Push changes to the private repo
+3. Push generator changes to the public repo when needed
+4. GitHub Actions rebuilds and deploys the site
 
-GitHub Actions automatically handles the private checkout on each build.
+### 5. Local development
 
+For local work, clone both repos and copy the private `content/` and `templates/` into the public repo workspace before running `cargo run`.
 
+## GitHub Pages
+
+The site is configured for GitHub Pages project hosting.
+
+- The workflow sets `BASE_URL` automatically from the repo name
+- The workflow currently sets `NOINDEX=1` for staging-style deploys
+- If you want the site publicly indexed later, remove `NOINDEX=1` from the workflow
+
+## Notes
+
+- `public/` is generated output and should not be committed
+- `content/` and `templates/` are ignored in the public repo when using the split-repo setup
+- If a template file is missing, the build fails immediately
