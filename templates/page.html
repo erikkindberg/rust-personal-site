@@ -82,6 +82,64 @@
     }
     .breadcrumbs a { color: var(--text); }
     .breadcrumbs > * + *::before { content: " › "; color: var(--dim); }
+    .blog-list {
+      display: grid;
+      gap: 0.9rem;
+      margin-top: 1rem;
+    }
+    .post-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 0.9rem 1rem;
+    }
+    .card-title {
+      margin: 0 0 0.25rem;
+      font-size: 1.08rem;
+    }
+    .card-subheading {
+      margin: 0 0 0.4rem;
+      color: var(--accent-2);
+      font-size: 0.95rem;
+    }
+    .card-excerpt {
+      margin: 0;
+      color: var(--dim);
+      font-size: 0.95rem;
+    }
+    .blog-post .post-header {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1rem;
+      padding-bottom: 0.8rem;
+    }
+    .blog-post .post-title {
+      margin: 0;
+    }
+    .blog-post .post-subheading {
+      margin: 0.45rem 0 0;
+      color: var(--accent-2);
+      font-size: 1rem;
+    }
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-top: 1rem;
+      padding: 0.6rem 0.8rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-soft);
+    }
+    .page-link {
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .page-current {
+      color: var(--dim);
+      font-size: 0.9rem;
+      margin: 0 auto;
+    }
   </style>
 </head>
 <body>

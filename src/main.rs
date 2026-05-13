@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -90,6 +90,64 @@ const DEFAULT_TEMPLATE: &str = r#"<!doctype html>
         }
         .breadcrumbs a { color: var(--text); }
         .breadcrumbs > * + *::before { content: " › "; color: var(--dim); }
+        .blog-list {
+            display: grid;
+            gap: 0.9rem;
+            margin-top: 1rem;
+        }
+        .post-card {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--panel);
+            padding: 0.9rem 1rem;
+        }
+        .card-title {
+            margin: 0 0 0.25rem;
+            font-size: 1.08rem;
+        }
+        .card-subheading {
+            margin: 0 0 0.4rem;
+            color: var(--accent-2);
+            font-size: 0.95rem;
+        }
+        .card-excerpt {
+            margin: 0;
+            color: var(--dim);
+            font-size: 0.95rem;
+        }
+        .blog-post .post-header {
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1rem;
+            padding-bottom: 0.8rem;
+        }
+        .blog-post .post-title {
+            margin: 0;
+        }
+        .blog-post .post-subheading {
+            margin: 0.45rem 0 0;
+            color: var(--accent-2);
+            font-size: 1rem;
+        }
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-top: 1rem;
+            padding: 0.6rem 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--panel-soft);
+        }
+        .page-link {
+            color: var(--accent);
+            white-space: nowrap;
+        }
+        .page-current {
+            color: var(--dim);
+            font-size: 0.9rem;
+            margin: 0 auto;
+        }
   </style>
 </head>
 <body>
@@ -100,12 +158,22 @@ const DEFAULT_TEMPLATE: &str = r#"<!doctype html>
 </html>
 "#;
 
+const BLOG_POSTS_PER_PAGE_DEFAULT: usize = 5;
+
 #[derive(Clone)]
 #[allow(dead_code)]
 struct PageMeta {
     rel_path: PathBuf,
     section: Option<String>,
     title: String,
+}
+
+#[derive(Clone)]
+struct BlogPostMeta {
+    rel_path: PathBuf,
+    title: String,
+    subtitle: Option<String>,
+    excerpt: String,
 }
 
 type SiteStructure = BTreeMap<Option<String>, Vec<PageMeta>>;
@@ -117,6 +185,7 @@ fn main() -> Result<()> {
     let base_url = base_url_from_env();
     let noindex = noindex_from_env();
     let robots_meta = robots_meta_tag(noindex);
+    let blog_posts_per_page = blog_posts_per_page_from_env();
 
     let template = load_template(template_path)?;
 
@@ -136,6 +205,9 @@ fn main() -> Result<()> {
 
     let mut site_structure: SiteStructure = BTreeMap::new();
     let mut page_list: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let mut markdown_sources: HashMap<PathBuf, String> = HashMap::new();
+    let mut blog_posts: Vec<BlogPostMeta> = Vec::new();
+    let mut blog_intro_markdown: Option<String> = None;
 
     for entry in WalkDir::new(content_dir).into_iter().filter_map(|entry| entry.ok()) {
         let path = entry.path();
@@ -158,24 +230,50 @@ fn main() -> Result<()> {
             .or_insert_with(Vec::new)
             .push(PageMeta {
                 rel_path: relative.clone(),
-                section: section.clone(),
-                title,
+                section,
+                title: title.clone(),
             });
 
-        let mut target = output_dir.join(&relative);
-        target.set_extension("html");
-        page_list.push((relative, target));
+        if is_blog_index_page(&relative) {
+            blog_intro_markdown = Some(markdown.clone());
+        }
+
+        if is_blog_post_page(&relative) {
+            blog_posts.push(BlogPostMeta {
+                rel_path: relative.clone(),
+                title,
+                subtitle: extract_subheading(&markdown),
+                excerpt: extract_excerpt(&markdown),
+            });
+        }
+
+        if !is_blog_index_page(&relative) {
+            let mut target = output_dir.join(&relative);
+            target.set_extension("html");
+            page_list.push((relative.clone(), target));
+        }
+
+        markdown_sources.insert(relative, markdown);
     }
 
     let mut generated_count = 0usize;
     let mut copied_count = 0usize;
 
     for (relative, target) in page_list {
-        let markdown = fs::read_to_string(content_dir.join(&relative))
-            .with_context(|| format!("failed to read markdown file: {}", relative.display()))?;
-        let html_content = markdown_to_html(&markdown);
-        let title = extract_title(&markdown).unwrap_or_else(|| fallback_title(&relative));
+        let markdown = markdown_sources
+            .get(&relative)
+            .with_context(|| format!("missing markdown source for {}", relative.display()))?;
+
+        let title = extract_title(markdown).unwrap_or_else(|| fallback_title(&relative));
         let section = get_section(&relative);
+
+        let html_content = if is_blog_post_page(&relative) {
+            let body_markdown = strip_title_and_subheading(markdown);
+            let body_html = markdown_to_html(&body_markdown);
+            render_blog_post_content(&title, extract_subheading(markdown).as_deref(), &body_html)
+        } else {
+            markdown_to_html(markdown)
+        };
 
         let nav_html = render_nav(&site_structure, &section, &base_url);
         let breadcrumbs_html = render_breadcrumbs(&relative, &section, &base_url);
@@ -199,6 +297,18 @@ fn main() -> Result<()> {
         generated_count += 1;
         println!("generated {}", target.display());
     }
+
+    generate_blog_listing_pages(
+        &output_dir,
+        &template,
+        &site_structure,
+        &base_url,
+        &robots_meta,
+        &blog_intro_markdown,
+        &mut blog_posts,
+        blog_posts_per_page,
+        &mut generated_count,
+    )?;
 
     for entry in WalkDir::new(content_dir).into_iter().filter_map(|entry| entry.ok()) {
         let path = entry.path();
@@ -286,6 +396,260 @@ fn robots_txt_content(noindex: bool) -> &'static str {
     } else {
         "User-agent: *\nAllow: /\n"
     }
+}
+
+fn blog_posts_per_page_from_env() -> usize {
+    std::env::var("BLOG_POSTS_PER_PAGE")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(BLOG_POSTS_PER_PAGE_DEFAULT)
+}
+
+fn is_blog_index_page(rel_path: &Path) -> bool {
+    rel_path == Path::new("blog/index.md")
+}
+
+fn is_blog_post_page(rel_path: &Path) -> bool {
+    let mut components = rel_path.components();
+    let first = components.next().and_then(|c| c.as_os_str().to_str());
+
+    if first != Some("blog") {
+        return false;
+    }
+
+    rel_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(|stem| stem != "index")
+        .unwrap_or(false)
+}
+
+fn extract_subheading(markdown: &str) -> Option<String> {
+    markdown
+        .lines()
+        .find_map(|line| line.strip_prefix("## ").map(str::trim))
+        .filter(|subtitle| !subtitle.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn extract_excerpt(markdown: &str) -> String {
+    markdown
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| "Read more…".to_string())
+}
+
+fn strip_title_and_subheading(markdown: &str) -> String {
+    let lines: Vec<&str> = markdown.lines().collect();
+    let mut idx = 0usize;
+
+    while idx < lines.len() && lines[idx].trim().is_empty() {
+        idx += 1;
+    }
+
+    if idx < lines.len() && lines[idx].trim_start().starts_with("# ") {
+        idx += 1;
+
+        while idx < lines.len() && lines[idx].trim().is_empty() {
+            idx += 1;
+        }
+
+        if idx < lines.len() && lines[idx].trim_start().starts_with("## ") {
+            idx += 1;
+
+            while idx < lines.len() && lines[idx].trim().is_empty() {
+                idx += 1;
+            }
+        }
+    } else {
+        idx = 0;
+    }
+
+    lines[idx..].join("\n")
+}
+
+fn render_blog_post_content(title: &str, subtitle: Option<&str>, body_html: &str) -> String {
+    let subtitle_html = subtitle
+        .map(|text| format!("<p class=\"post-subheading\">{}</p>", escape_html(text)))
+        .unwrap_or_default();
+
+    format!(
+        "<article class=\"blog-post\"><header class=\"post-header\"><h1 class=\"post-title\">{}</h1>{}</header><div class=\"post-body\">{}</div></article>",
+        escape_html(title),
+        subtitle_html,
+        body_html
+    )
+}
+
+fn render_blog_index_cards(posts: &[BlogPostMeta], base_url: &str) -> String {
+    if posts.is_empty() {
+        return "<section class=\"blog-list\"><p>No posts yet.</p></section>".to_string();
+    }
+
+    let mut cards = String::from("<section class=\"blog-list\">");
+
+    for post in posts {
+        let mut post_output = post.rel_path.clone();
+        post_output.set_extension("html");
+        let mut post_href = String::from("/");
+        post_href.push_str(&post_output.to_string_lossy().replace('\\', "/"));
+        let post_href = with_base_url(base_url, &post_href);
+
+        let subtitle = post
+            .subtitle
+            .as_ref()
+            .map(|text| format!("<p class=\"card-subheading\">{}</p>", escape_html(text)))
+            .unwrap_or_default();
+
+        cards.push_str(&format!(
+            "<article class=\"post-card\"><h2 class=\"card-title\"><a href=\"{}\">{}</a></h2>{}<p class=\"card-excerpt\">{}</p></article>",
+            post_href,
+            escape_html(&post.title),
+            subtitle,
+            escape_html(&post.excerpt)
+        ));
+    }
+
+    cards.push_str("</section>");
+    cards
+}
+
+fn blog_page_href(page_num: usize, base_url: &str) -> String {
+    let path = if page_num == 1 {
+        "/blog/index.html".to_string()
+    } else {
+        format!("/blog/page/{}/index.html", page_num)
+    };
+
+    with_base_url(base_url, &path)
+}
+
+fn render_blog_pagination(current_page: usize, total_pages: usize, base_url: &str) -> String {
+    if total_pages <= 1 {
+        return String::new();
+    }
+
+    let mut pagination = String::from("<nav class=\"pagination\" aria-label=\"Blog pagination\">");
+
+    if current_page > 1 {
+        pagination.push_str(&format!(
+            "<a class=\"page-link\" href=\"{}\">← Newer</a>",
+            blog_page_href(current_page - 1, base_url)
+        ));
+    }
+
+    pagination.push_str(&format!(
+        "<span class=\"page-current\">Page {} of {}</span>",
+        current_page, total_pages
+    ));
+
+    if current_page < total_pages {
+        pagination.push_str(&format!(
+            "<a class=\"page-link\" href=\"{}\">Older →</a>",
+            blog_page_href(current_page + 1, base_url)
+        ));
+    }
+
+    pagination.push_str("</nav>");
+    pagination
+}
+
+fn render_blog_breadcrumbs(page_num: usize, base_url: &str) -> String {
+    let home_url = with_base_url(base_url, "/");
+    let blog_url = blog_page_href(1, base_url);
+
+    if page_num == 1 {
+        return format!(
+            "<div class=\"breadcrumbs\"><a href=\"{}\">Home</a> <span>Blog</span></div>",
+            home_url
+        );
+    }
+
+    format!(
+        "<div class=\"breadcrumbs\"><a href=\"{}\">Home</a> <a href=\"{}\">Blog</a> <span>Page {}</span></div>",
+        home_url,
+        blog_url,
+        page_num
+    )
+}
+
+fn generate_blog_listing_pages(
+    output_dir: &Path,
+    template: &str,
+    site_structure: &SiteStructure,
+    base_url: &str,
+    robots_meta: &str,
+    blog_intro_markdown: &Option<String>,
+    blog_posts: &mut [BlogPostMeta],
+    posts_per_page: usize,
+    generated_count: &mut usize,
+) -> Result<()> {
+    blog_posts.sort_by(|a, b| b.rel_path.cmp(&a.rel_path));
+
+    let total_posts = blog_posts.len();
+    let total_pages = if total_posts == 0 {
+        1
+    } else {
+        (total_posts + posts_per_page - 1) / posts_per_page
+    };
+
+    let intro_html = blog_intro_markdown
+        .as_ref()
+        .map(|markdown| markdown_to_html(markdown))
+        .unwrap_or_default();
+    let blog_section = Some("Blog".to_string());
+
+    for page_num in 1..=total_pages {
+        let page_title = if page_num == 1 {
+            "Blog".to_string()
+        } else {
+            format!("Blog - Page {}", page_num)
+        };
+
+        let cards_html = if total_posts == 0 {
+            render_blog_index_cards(&[], base_url)
+        } else {
+            let start = (page_num - 1) * posts_per_page;
+            let end = usize::min(start + posts_per_page, total_posts);
+            render_blog_index_cards(&blog_posts[start..end], base_url)
+        };
+
+        let pagination_html = render_blog_pagination(page_num, total_pages, base_url);
+        let page_content = format!("{}{}{}", intro_html, cards_html, pagination_html);
+
+        let nav_html = render_nav(site_structure, &blog_section, base_url);
+        let breadcrumbs_html = render_blog_breadcrumbs(page_num, base_url);
+        let page = render_page(
+            template,
+            &page_title,
+            &page_content,
+            &nav_html,
+            &breadcrumbs_html,
+            robots_meta,
+        );
+
+        let target = if page_num == 1 {
+            output_dir.join("blog/index.html")
+        } else {
+            output_dir.join(format!("blog/page/{}/index.html", page_num))
+        };
+
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory: {}", parent.display()))?;
+        }
+
+        fs::write(&target, page)
+            .with_context(|| format!("failed to write output file: {}", target.display()))?;
+
+        *generated_count += 1;
+        println!("generated {}", target.display());
+    }
+
+    Ok(())
 }
 
 fn normalize_base_url(raw_base_url: &str) -> String {
@@ -444,7 +808,13 @@ fn render_breadcrumbs(rel_path: &Path, current_section: &Option<String>, base_ur
         ));
     }
 
-    if components.len() > 1 {
+    let is_index_page = rel_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(|stem| stem == "index")
+        .unwrap_or(false);
+
+    if components.len() > 1 && !is_index_page {
         let title = fallback_title(rel_path);
         breadcrumbs.push_str(&format!(" <span>{}</span>", escape_html(&title)));
     }

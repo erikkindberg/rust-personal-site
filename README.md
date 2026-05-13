@@ -11,6 +11,8 @@ A minimal static site generator written in Rust that converts Markdown to HTML w
 - Uses `templates/page.html` as the page template
 - **Automatically generates section-based navigation**
 - **Adds breadcrumbs** showing page hierarchy
+- **Builds blog index cards + pagination** from `content/blog/*.md`
+- **Supports blog post title/subheading template** from Markdown headings
 
 ## Structure & Navigation
 
@@ -60,6 +62,29 @@ cargo run
 
 Generated pages appear in `public/`.
 
+### Blog post format
+
+For blog posts (`content/blog/*.md` except `index.md`), use:
+
+```md
+# Post Title
+## Post Subheading
+
+Post body starts here...
+```
+
+- `#` becomes the post title
+- `##` becomes the post subheading
+- Blog index renders each post in a card linking to the post page
+
+### Blog pagination
+
+Set `BLOG_POSTS_PER_PAGE` to control pagination size:
+
+```bash
+BLOG_POSTS_PER_PAGE=5 cargo run
+```
+
 ## Base URL for deployments
 
 Set `BASE_URL` when your site is served from a subpath (like GitHub Pages project sites).
@@ -89,9 +114,9 @@ BASE_URL=/rust-personal-site NOINDEX=1 cargo run
 
 The GitHub Actions workflow currently deploys with `NOINDEX=1` for staging privacy-by-obscurity. Remove that env var when you want pages indexable.
 
-## Split setup: Code public, content private
+## 
 
-To open-source the generator while keeping personal content private:
+onte
 
 1. **Create private repo** `rust-personal-site-content` with:
    ```
