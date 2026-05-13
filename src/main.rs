@@ -6,158 +6,6 @@ use anyhow::{Context, Result};
 use pulldown_cmark::{html, Options, Parser};
 use walkdir::WalkDir;
 
-const DEFAULT_TEMPLATE: &str = r#"<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-    {{robots_meta}}
-  <title>{{title}}</title>
-  <style>
-        :root {
-            --bg: #0f1117;
-            --panel: #141925;
-            --panel-soft: #181e2d;
-            --text: #d6deeb;
-            --dim: #8a94a6;
-            --border: #283247;
-            --accent: #82aaff;
-            --accent-2: #c792ea;
-        }
-        * { box-sizing: border-box; }
-        body {
-            max-width: 900px;
-            margin: 2.25rem auto;
-            padding: 0 1.1rem;
-            background: var(--bg);
-            color: var(--text);
-            font-family: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
-            line-height: 1.7;
-            font-size: 15px;
-            -webkit-font-smoothing: antialiased;
-            text-rendering: optimizeLegibility;
-        }
-        img {
-            max-width: 100%;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 0.2rem;
-            background: var(--panel);
-        }
-        pre {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 1rem;
-            overflow-x: auto;
-        }
-        code {
-            font-family: inherit;
-            color: var(--accent-2);
-        }
-        h1, h2, h3 {
-            color: #e5ecf8;
-            line-height: 1.3;
-            margin-top: 1.6rem;
-        }
-        a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-        a:hover {
-            text-decoration: underline;
-            text-underline-offset: 2px;
-        }
-        nav {
-            margin-bottom: 1.2rem;
-            padding: 0.7rem 0.85rem;
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            background: var(--panel-soft);
-        }
-        nav > a {
-            display: inline-block;
-            margin-right: 1.15rem;
-        }
-        .breadcrumbs {
-            font-size: 0.9em;
-            margin-bottom: 1.2rem;
-            color: var(--dim);
-            padding: 0.55rem 0.75rem;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            background: var(--panel);
-        }
-        .breadcrumbs a { color: var(--text); }
-        .breadcrumbs > * + *::before { content: " › "; color: var(--dim); }
-        .blog-list {
-            display: grid;
-            gap: 0.9rem;
-            margin-top: 1rem;
-        }
-        .post-card {
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            background: var(--panel);
-            padding: 0.9rem 1rem;
-        }
-        .card-title {
-            margin: 0 0 0.25rem;
-            font-size: 1.08rem;
-        }
-        .card-subheading {
-            margin: 0 0 0.4rem;
-            color: var(--accent-2);
-            font-size: 0.95rem;
-        }
-        .card-excerpt {
-            margin: 0;
-            color: var(--dim);
-            font-size: 0.95rem;
-        }
-        .blog-post .post-header {
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 1rem;
-            padding-bottom: 0.8rem;
-        }
-        .blog-post .post-title {
-            margin: 0;
-        }
-        .blog-post .post-subheading {
-            margin: 0.45rem 0 0;
-            color: var(--accent-2);
-            font-size: 1rem;
-        }
-        .pagination {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 0.75rem;
-            margin-top: 1rem;
-            padding: 0.6rem 0.8rem;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            background: var(--panel-soft);
-        }
-        .page-link {
-            color: var(--accent);
-            white-space: nowrap;
-        }
-        .page-current {
-            color: var(--dim);
-            font-size: 0.9rem;
-            margin: 0 auto;
-        }
-  </style>
-</head>
-<body>
-  {{nav}}
-  {{breadcrumbs}}
-  {{content}}
-</body>
-</html>
-"#;
-
 const BLOG_POSTS_PER_PAGE_DEFAULT: usize = 5;
 
 #[derive(Clone)]
@@ -176,18 +24,25 @@ struct BlogPostMeta {
     excerpt: String,
 }
 
+#[derive(Clone)]
+struct Templates {
+    base: String,
+    blog_index: String,
+    blog_post: String,
+}
+
 type SiteStructure = BTreeMap<Option<String>, Vec<PageMeta>>;
 
 fn main() -> Result<()> {
     let content_dir = Path::new("content");
     let output_dir = Path::new("public");
-    let template_path = Path::new("templates/page.html");
+    let template_dir = Path::new("templates");
     let base_url = base_url_from_env();
     let noindex = noindex_from_env();
     let robots_meta = robots_meta_tag(noindex);
     let blog_posts_per_page = blog_posts_per_page_from_env();
 
-    let template = load_template(template_path)?;
+    let templates = load_templates(template_dir)?;
 
     if !content_dir.exists() {
         anyhow::bail!(
@@ -268,9 +123,9 @@ fn main() -> Result<()> {
         let section = get_section(&relative);
 
         let html_content = if is_blog_post_page(&relative) {
-            let body_markdown = strip_title_and_subheading(markdown);
+            let (_, subtitle, body_markdown) = split_blog_post_markdown(markdown);
             let body_html = markdown_to_html(&body_markdown);
-            render_blog_post_content(&title, extract_subheading(markdown).as_deref(), &body_html)
+            render_blog_post_content(&templates.blog_post, &title, subtitle.as_deref(), &body_html)
         } else {
             markdown_to_html(markdown)
         };
@@ -278,7 +133,7 @@ fn main() -> Result<()> {
         let nav_html = render_nav(&site_structure, &section, &base_url);
         let breadcrumbs_html = render_breadcrumbs(&relative, &section, &base_url);
         let page = render_page(
-            &template,
+            &templates.base,
             &title,
             &html_content,
             &nav_html,
@@ -300,7 +155,7 @@ fn main() -> Result<()> {
 
     generate_blog_listing_pages(
         &output_dir,
-        &template,
+        &templates,
         &site_structure,
         &base_url,
         &robots_meta,
@@ -349,13 +204,17 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn load_template(template_path: &Path) -> Result<String> {
-    if template_path.exists() {
-        fs::read_to_string(template_path)
-            .with_context(|| format!("failed to read template: {}", template_path.display()))
-    } else {
-        Ok(DEFAULT_TEMPLATE.to_string())
-    }
+fn load_templates(template_dir: &Path) -> Result<Templates> {
+    Ok(Templates {
+        base: load_template_file(&template_dir.join("page.html"))?,
+        blog_index: load_template_file(&template_dir.join("blog_index.html"))?,
+        blog_post: load_template_file(&template_dir.join("blog_post.html"))?,
+    })
+}
+
+fn load_template_file(template_path: &Path) -> Result<String> {
+    fs::read_to_string(template_path)
+        .with_context(|| format!("failed to read required template: {}", template_path.display()))
 }
 
 fn is_markdown_file(path: &Path) -> bool {
@@ -426,11 +285,7 @@ fn is_blog_post_page(rel_path: &Path) -> bool {
 }
 
 fn extract_subheading(markdown: &str) -> Option<String> {
-    markdown
-        .lines()
-        .find_map(|line| line.strip_prefix("## ").map(str::trim))
-        .filter(|subtitle| !subtitle.is_empty())
-        .map(ToOwned::to_owned)
+    split_blog_post_markdown(markdown).1
 }
 
 fn extract_excerpt(markdown: &str) -> String {
@@ -442,15 +297,23 @@ fn extract_excerpt(markdown: &str) -> String {
         .unwrap_or_else(|| "Read more…".to_string())
 }
 
-fn strip_title_and_subheading(markdown: &str) -> String {
+fn split_blog_post_markdown(markdown: &str) -> (Option<String>, Option<String>, String) {
     let lines: Vec<&str> = markdown.lines().collect();
     let mut idx = 0usize;
+    let mut title = None;
+    let mut subtitle = None;
 
     while idx < lines.len() && lines[idx].trim().is_empty() {
         idx += 1;
     }
 
     if idx < lines.len() && lines[idx].trim_start().starts_with("# ") {
+        title = lines[idx]
+            .trim_start()
+            .strip_prefix("# ")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
         idx += 1;
 
         while idx < lines.len() && lines[idx].trim().is_empty() {
@@ -458,6 +321,12 @@ fn strip_title_and_subheading(markdown: &str) -> String {
         }
 
         if idx < lines.len() && lines[idx].trim_start().starts_with("## ") {
+            subtitle = lines[idx]
+                .trim_start()
+                .strip_prefix("## ")
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
             idx += 1;
 
             while idx < lines.len() && lines[idx].trim().is_empty() {
@@ -468,20 +337,51 @@ fn strip_title_and_subheading(markdown: &str) -> String {
         idx = 0;
     }
 
-    lines[idx..].join("\n")
+    (title, subtitle, lines[idx..].join("\n"))
 }
 
-fn render_blog_post_content(title: &str, subtitle: Option<&str>, body_html: &str) -> String {
+fn render_blog_post_content(
+    template: &str,
+    title: &str,
+    subtitle: Option<&str>,
+    body_html: &str,
+) -> String {
     let subtitle_html = subtitle
         .map(|text| format!("<p class=\"post-subheading\">{}</p>", escape_html(text)))
         .unwrap_or_default();
 
-    format!(
-        "<article class=\"blog-post\"><header class=\"post-header\"><h1 class=\"post-title\">{}</h1>{}</header><div class=\"post-body\">{}</div></article>",
-        escape_html(title),
-        subtitle_html,
-        body_html
+    render_template(
+        template,
+        &[
+            ("post_title", &escape_html(title)),
+            ("post_subheading_block", &subtitle_html),
+            ("post_body", body_html),
+        ],
     )
+}
+
+fn render_blog_index_content(
+    template: &str,
+    intro_html: &str,
+    cards_html: &str,
+    pagination_html: &str,
+) -> String {
+    render_template(
+        template,
+        &[
+            ("blog_intro", intro_html),
+            ("blog_posts", cards_html),
+            ("pagination", pagination_html),
+        ],
+    )
+}
+
+fn render_template(template: &str, placeholders: &[(&str, &str)]) -> String {
+    let mut output = template.to_string();
+    for (placeholder, value) in placeholders {
+        output = output.replace(&format!("{{{{{}}}}}", placeholder), value);
+    }
+    output
 }
 
 fn render_blog_index_cards(posts: &[BlogPostMeta], base_url: &str) -> String {
@@ -578,7 +478,7 @@ fn render_blog_breadcrumbs(page_num: usize, base_url: &str) -> String {
 
 fn generate_blog_listing_pages(
     output_dir: &Path,
-    template: &str,
+    templates: &Templates,
     site_structure: &SiteStructure,
     base_url: &str,
     robots_meta: &str,
@@ -618,12 +518,17 @@ fn generate_blog_listing_pages(
         };
 
         let pagination_html = render_blog_pagination(page_num, total_pages, base_url);
-        let page_content = format!("{}{}{}", intro_html, cards_html, pagination_html);
+        let page_content = render_blog_index_content(
+            &templates.blog_index,
+            &intro_html,
+            &cards_html,
+            &pagination_html,
+        );
 
         let nav_html = render_nav(site_structure, &blog_section, base_url);
         let breadcrumbs_html = render_blog_breadcrumbs(page_num, base_url);
         let page = render_page(
-            template,
+            &templates.base,
             &page_title,
             &page_content,
             &nav_html,

@@ -121,8 +121,13 @@ onte
 1. **Create private repo** `rust-personal-site-content` with:
    ```
    content/
-   templates/  (if custom)
+   templates/
+     page.html
+     blog_index.html
+     blog_post.html
    ```
+
+   `page.html` is the shared shell, while `blog_index.html` and `blog_post.html` are the page-type templates.
 
 2. **Generate Personal Access Token** (GitHub Settings → Developer settings → Personal access tokens):
    - Scope: `repo` (read private repos)
