@@ -89,3 +89,30 @@ BASE_URL=/rust-personal-site NOINDEX=1 cargo run
 
 The GitHub Actions workflow currently deploys with `NOINDEX=1` for staging privacy-by-obscurity. Remove that env var when you want pages indexable.
 
+## Split setup: Code public, content private
+
+To open-source the generator while keeping personal content private:
+
+1. **Create private repo** `rust-personal-site-content` with:
+   ```
+   content/
+   templates/  (if custom)
+   ```
+
+2. **Generate Personal Access Token** (GitHub Settings → Developer settings → Personal access tokens):
+   - Scope: `repo` (read private repos)
+   - Copy the token
+
+3. **Add to this repo** (Settings → Secrets and variables → Actions):
+   - Secret name: `PRIVATE_REPO_TOKEN`
+   - Value: Your PAT
+
+4. **Local workflow**:
+   - Clone both repos
+   - Copy private `content/` into public repo workspace
+   - Run `cargo run`
+   - Don't commit `content/` (it's in `.gitignore`)
+
+GitHub Actions automatically handles the private checkout on each build.
+
+

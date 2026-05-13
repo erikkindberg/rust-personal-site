@@ -13,6 +13,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout private content
+        uses: actions/checkout@v4
+        with:
+          repository: erikkindberg/rust-personal-site-content
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: ./content-private
+
+      - name: Move content into place
+        run: |
+          mv content-private/content ./content || true
+          mv content-private/templates ./templates || true
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
