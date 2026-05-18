@@ -43,7 +43,7 @@ fn render_tag_links(tags: &[String], base_url: &str, class_name: &str) -> String
         return String::new();
     }
 
-    let mut output = format!(r#"<div class="{}"><span class="tag-label">Tags:</span>"#, class_name);
+    let mut output = format!(r#"<div class="{}"><span class="tag-label">tags:</span>"#, class_name);
 
     for tag in tags {
         let slug = slugify_tag(tag);
@@ -80,6 +80,10 @@ fn render_blog_filter_links(
         r#"<a{} href="{}">All</a>"#,
         all_style,
         with_base_url(base_url, "/blog/index.html")
+    ));
+    filters.push_str(&format!(
+        r#"<a class="tag-pill" href="{}">All tags</a>"#,
+        with_base_url(base_url, "/blog/tags/index.html")
     ));
 
     for (slug, label) in tags {
@@ -368,6 +372,37 @@ fn render_tag_breadcrumbs(tag_label: &str, page_num: usize, base_url: &str) -> S
     )
 }
 
+fn render_tags_index_breadcrumbs(base_url: &str) -> String {
+    let home_url = with_base_url(base_url, "/");
+    let blog_url = blog_page_href(1, base_url);
+
+    format!(
+        "<div class=\"breadcrumbs\"><a href=\"{}\">Home</a> <a href=\"{}\">Blog</a> <span>Tags</span></div>",
+        home_url, blog_url
+    )
+}
+
+fn render_tags_directory(tags: &[(String, String, usize)], base_url: &str) -> String {
+    if tags.is_empty() {
+        return "<section class=\"blog-list\"><p>No tags yet.</p></section>".to_string();
+    }
+
+    let mut output = String::from("<section class=\"blog-list\"><article class=\"post-card\"><h2 class=\"card-title\">Browse by tag</h2><div class=\"card-tags\">");
+
+    for (slug, label, count) in tags {
+        let href = blog_tag_page_href(slug, 1, base_url);
+        output.push_str(&format!(
+            r#"<a class="tag-pill" href="{}">{} ({})</a>"#,
+            href,
+            escape_html(label),
+            count
+        ));
+    }
+
+    output.push_str("</div></article></section>");
+    output
+}
+
 fn build_tag_filters(posts: &[BlogPostMeta]) -> Vec<(String, String)> {
     let mut tags = BTreeMap::<String, String>::new();
 
@@ -495,6 +530,48 @@ pub(crate) fn generate_blog_tag_archive_pages(
             tag_labels.entry(slug).or_insert_with(|| tag.clone());
         }
     }
+
+    let mut tags_directory: Vec<(String, String, usize)> = Vec::new();
+    for (slug, label) in &tag_labels {
+        let count = posts_by_tag.get(slug).map(|posts| posts.len()).unwrap_or(0);
+        tags_directory.push((slug.clone(), label.clone(), count));
+    }
+
+    let tags_page_title = "Blog - Tags".to_string();
+    let tags_heading_html = "<h1>All tags</h1>".to_string();
+    let tags_intro_html = "<p>Browse all tags used in the blog.</p>".to_string();
+    let tags_cards_html = render_tags_directory(&tags_directory, base_url);
+    let tags_page_content = render_blog_index_content(
+        &templates.blog_index,
+        &tags_heading_html,
+        &tags_intro_html,
+        "",
+        &tags_cards_html,
+        "",
+    );
+    let blog_section = Some("Blog".to_string());
+    let tags_nav_html = crate::render::render_nav(site_structure, &blog_section, base_url);
+    let tags_breadcrumbs_html = render_tags_index_breadcrumbs(base_url);
+    let tags_page = render_page(
+        &templates.base,
+        &tags_page_title,
+        &tags_page_content,
+        &tags_nav_html,
+        &tags_breadcrumbs_html,
+        robots_meta,
+    );
+    let tags_target = output_dir.join("blog/tags/index.html");
+
+    if let Some(parent) = tags_target.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create directory: {}", parent.display()))?;
+    }
+
+    fs::write(&tags_target, tags_page)
+        .with_context(|| format!("failed to write output file: {}", tags_target.display()))?;
+
+    *generated_count += 1;
+    println!("generated {}", tags_target.display());
 
     for (tag_slug, tagged_posts) in posts_by_tag.iter_mut() {
         tagged_posts.sort_by(|a, b| b.rel_path.cmp(&a.rel_path));

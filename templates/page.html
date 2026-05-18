@@ -107,7 +107,7 @@
     .blog-tag-filters {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.55rem;
+      gap: 0.75rem;
       align-items: center;
       margin: 0.6rem 0 0;
     }
@@ -130,6 +130,7 @@
       display: inline-flex;
       align-items: center;
       gap: 0.25rem;
+      margin-right: 0.45rem;
       padding: 0.18rem 0.6rem;
       border: 1px solid var(--border);
       border-radius: 999px;
@@ -138,6 +139,9 @@
       font-size: 0.84rem;
       line-height: 1.4;
       white-space: nowrap;
+    }
+    .tag-pill:last-child {
+      margin-right: 0;
     }
     .tag-pill.is-active {
       background: var(--accent);
@@ -165,6 +169,7 @@
     }
     .blog-post .post-tags {
       margin-top: 0.7rem;
+      padding-top: 0.2rem;
     }
     .pagination {
       display: flex;
