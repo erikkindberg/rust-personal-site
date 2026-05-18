@@ -102,6 +102,45 @@
       color: var(--accent-2);
       font-size: 0.95rem;
     }
+    .card-tags,
+    .post-tags,
+    .blog-tag-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      align-items: center;
+      margin: 0.6rem 0 0;
+    }
+    .blog-tag-filters {
+      margin-bottom: 1rem;
+      padding: 0.75rem 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel-soft);
+    }
+    .blog-tag-filters > span {
+      color: var(--dim);
+      margin-right: 0.3rem;
+    }
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.18rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel-soft);
+      color: var(--text);
+      font-size: 0.84rem;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    .tag-pill.is-active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0f1117;
+      font-weight: 700;
+    }
     .card-excerpt {
       margin: 0;
       color: var(--dim);
@@ -119,6 +158,9 @@
       margin: 0.45rem 0 0;
       color: var(--accent-2);
       font-size: 1rem;
+    }
+    .blog-post .post-tags {
+      margin-top: 0.7rem;
     }
     .pagination {
       display: flex;

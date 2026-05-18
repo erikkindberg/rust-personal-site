@@ -14,6 +14,7 @@ pub(crate) struct BlogPostMeta {
     pub(crate) rel_path: PathBuf,
     pub(crate) title: String,
     pub(crate) subtitle: Option<String>,
+    pub(crate) tags: Vec<String>,
     pub(crate) excerpt: String,
 }
 

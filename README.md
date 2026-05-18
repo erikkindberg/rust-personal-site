@@ -1,6 +1,6 @@
 # Rust Static Site Generator
 
-A minimal static site generator written in Rust that converts Markdown into a static site with section navigation, breadcrumbs, blog cards, and pagination.
+A minimal static site generator written in Rust that converts Markdown into a static site with section navigation, breadcrumbs, blog cards, pagination, and blog tags.
 
 ## What it does
 
@@ -11,6 +11,7 @@ A minimal static site generator written in Rust that converts Markdown into a st
 - Supports a multi-template layout system
 - Generates blog index cards and pagination from `content/blog/*.md`
 - Supports blog post title/subheading rendering from Markdown headings
+- Supports blog post tags and tag archive pages
 
 ## How the templates work
 
@@ -57,10 +58,6 @@ Placeholders used in this template:
 - `{{post_subheading_block}}`
 - `{{post_body}}`
 
-### Template behavior
-
-The generator fails if any of these files are missing. There are no embedded fallback templates anymore.
-
 ## Content structure
 
 ### Sections
@@ -101,14 +98,17 @@ For blog posts in `content/blog/*.md` except `index.md`, use this pattern:
 ```md
 # Post Title
 ## Post Subheading
+tags: rust, web, static site
 
 Post body starts here...
 ```
 
 - `#` becomes the post title
 - `##` becomes the post subheading
+- `tags:` declares a comma-separated list of tags
 - The remaining Markdown becomes the post body
 - The blog index renders each post as a card linking to the post page
+- The blog index also shows tag filter links, and each tag gets its own archive page under `blog/tags/<tag>/`
 
 ## Blog pagination
 

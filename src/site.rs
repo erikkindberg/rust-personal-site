@@ -8,6 +8,7 @@ use walkdir::WalkDir;
 use crate::blog::{
     extract_excerpt,
     extract_subheading,
+    generate_blog_tag_archive_pages,
     generate_blog_listing_pages,
     is_blog_index_page,
     is_blog_post_page,
@@ -80,10 +81,12 @@ pub(crate) fn build_site(config: &BuildConfig, templates: &Templates) -> Result<
         }
 
         if is_blog_post_page(&relative) {
+            let (_, subtitle, tags, _) = split_blog_post_markdown(&markdown);
             blog_posts.push(BlogPostMeta {
                 rel_path: relative.clone(),
                 title,
-                subtitle: extract_subheading(&markdown),
+                subtitle: subtitle.or_else(|| extract_subheading(&markdown)),
+                tags,
                 excerpt: extract_excerpt(&markdown),
             });
         }
@@ -109,9 +112,15 @@ pub(crate) fn build_site(config: &BuildConfig, templates: &Templates) -> Result<
         let section = get_section(&relative);
 
         let html_content = if is_blog_post_page(&relative) {
-            let (_, subtitle, body_markdown) = split_blog_post_markdown(markdown);
+            let (_, subtitle, tags, body_markdown) = split_blog_post_markdown(markdown);
             let body_html = markdown_to_html(&body_markdown);
-            render_blog_post_content(&templates.blog_post, &title, subtitle.as_deref(), &body_html)
+            render_blog_post_content(
+                &templates.blog_post,
+                &title,
+                subtitle.as_deref(),
+                &tags,
+                &body_html,
+            )
         } else {
             markdown_to_html(markdown)
         };
@@ -147,6 +156,17 @@ pub(crate) fn build_site(config: &BuildConfig, templates: &Templates) -> Result<
         &config.robots_meta,
         &blog_intro_markdown,
         &mut blog_posts,
+        config.blog_posts_per_page,
+        &mut generated_count,
+    )?;
+
+    generate_blog_tag_archive_pages(
+        output_dir,
+        templates,
+        &site_structure,
+        &config.base_url,
+        &config.robots_meta,
+        &blog_posts,
         config.blog_posts_per_page,
         &mut generated_count,
     )?;
