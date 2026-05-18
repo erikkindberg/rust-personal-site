@@ -43,7 +43,7 @@ fn render_tag_links(tags: &[String], base_url: &str, class_name: &str) -> String
         return String::new();
     }
 
-    let mut output = format!(r#"<div class="{}">"#, class_name);
+    let mut output = format!(r#"<div class="{}"><span class="tag-label">Tags:</span>"#, class_name);
 
     for tag in tags {
         let slug = slugify_tag(tag);
