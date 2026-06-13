@@ -7,7 +7,6 @@ use walkdir::WalkDir;
 
 use crate::blog::{
     extract_excerpt,
-    extract_subheading,
     generate_blog_tag_archive_pages,
     generate_blog_listing_pages,
     is_blog_index_page,
@@ -81,12 +80,14 @@ pub(crate) fn build_site(config: &BuildConfig, templates: &Templates) -> Result<
         }
 
         if is_blog_post_page(&relative) {
-            let (_, subtitle, tags, _) = split_blog_post_markdown(&markdown);
+            let parsed = split_blog_post_markdown(&markdown);
             blog_posts.push(BlogPostMeta {
                 rel_path: relative.clone(),
                 title,
-                subtitle: subtitle.or_else(|| extract_subheading(&markdown)),
-                tags,
+                subtitle: parsed.subtitle,
+                tags: parsed.tags,
+                published: parsed.published,
+                edited: parsed.edited,
                 excerpt: extract_excerpt(&markdown),
             });
         }
@@ -112,13 +113,15 @@ pub(crate) fn build_site(config: &BuildConfig, templates: &Templates) -> Result<
         let section = get_section(&relative);
 
         let html_content = if is_blog_post_page(&relative) {
-            let (_, subtitle, tags, body_markdown) = split_blog_post_markdown(markdown);
-            let body_html = markdown_to_html(&body_markdown);
+            let parsed = split_blog_post_markdown(markdown);
+            let body_html = markdown_to_html(&parsed.body);
             render_blog_post_content(
                 &templates.blog_post,
                 &title,
-                subtitle.as_deref(),
-                &tags,
+                parsed.subtitle.as_deref(),
+                &parsed.tags,
+                parsed.published.as_deref(),
+                parsed.edited.as_deref(),
                 &body_html,
             )
         } else {

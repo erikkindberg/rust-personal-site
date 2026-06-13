@@ -126,13 +126,22 @@ pub(crate) fn is_blog_post_page(rel_path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) struct BlogParsed {
+    pub(crate) title: Option<String>,
+    pub(crate) subtitle: Option<String>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) published: Option<String>,
+    pub(crate) edited: Option<String>,
+    pub(crate) body: String,
+}
+
 pub(crate) fn extract_subheading(markdown: &str) -> Option<String> {
-    split_blog_post_markdown(markdown).1
+    split_blog_post_markdown(markdown).subtitle
 }
 
 pub(crate) fn extract_excerpt(markdown: &str) -> String {
     split_blog_post_markdown(markdown)
-        .3
+        .body
         .lines()
         .map(str::trim)
         .find(|line| !line.is_empty() && !line.starts_with('#'))
@@ -140,14 +149,14 @@ pub(crate) fn extract_excerpt(markdown: &str) -> String {
         .unwrap_or_else(|| "Read more…".to_string())
 }
 
-pub(crate) fn split_blog_post_markdown(
-    markdown: &str,
-) -> (Option<String>, Option<String>, Vec<String>, String) {
+pub(crate) fn split_blog_post_markdown(markdown: &str) -> BlogParsed {
     let lines: Vec<&str> = markdown.lines().collect();
     let mut idx = 0usize;
     let mut title = None;
     let mut subtitle = None;
     let mut tags = Vec::new();
+    let mut published = None;
+    let mut edited = None;
 
     while idx < lines.len() && lines[idx].trim().is_empty() {
         idx += 1;
@@ -197,6 +206,26 @@ pub(crate) fn split_blog_post_markdown(
             continue;
         }
 
+        if trimmed.starts_with("published:") {
+            published = trimmed
+                .strip_prefix("published:")
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToOwned::to_owned);
+            idx += 1;
+            continue;
+        }
+
+        if trimmed.starts_with("edited:") {
+            edited = trimmed
+                .strip_prefix("edited:")
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToOwned::to_owned);
+            idx += 1;
+            continue;
+        }
+
         break;
     }
 
@@ -204,7 +233,59 @@ pub(crate) fn split_blog_post_markdown(
         idx += 1;
     }
 
-    (title, subtitle, tags, lines[idx..].join("\n"))
+    BlogParsed {
+        title,
+        subtitle,
+        tags,
+        published,
+        edited,
+        body: lines[idx..].join("\n"),
+    }
+}
+
+fn format_date(date_str: &str) -> String {
+    const MONTHS: [&str; 12] = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ];
+    let parts: Vec<&str> = date_str.splitn(3, '-').collect();
+    if parts.len() == 3 {
+        if let (Ok(month), Ok(day)) = (parts[1].parse::<usize>(), parts[2].parse::<u32>()) {
+            if month >= 1 && month <= 12 {
+                return format!("{} {}, {}", MONTHS[month - 1], day, parts[0]);
+            }
+        }
+    }
+    date_str.to_string()
+}
+
+fn render_timestamps_block(published: Option<&str>, edited: Option<&str>) -> String {
+    if published.is_none() && edited.is_none() {
+        return String::new();
+    }
+
+    let mut html = String::from(r#"<div class="post-timestamps">"#);
+
+    if let Some(date) = published {
+        let formatted = format_date(date);
+        html.push_str(&format!(
+            r#"<span class="post-date">Published: <time datetime="{}">{}</time></span>"#,
+            escape_html(date),
+            escape_html(&formatted)
+        ));
+    }
+
+    if let Some(date) = edited {
+        let formatted = format_date(date);
+        html.push_str(&format!(
+            r#"<span class="post-date">Last edited: <time datetime="{}">{}</time></span>"#,
+            escape_html(date),
+            escape_html(&formatted)
+        ));
+    }
+
+    html.push_str("</div>");
+    html
 }
 
 pub(crate) fn render_blog_post_content(
@@ -212,11 +293,14 @@ pub(crate) fn render_blog_post_content(
     title: &str,
     subtitle: Option<&str>,
     tags: &[String],
+    published: Option<&str>,
+    edited: Option<&str>,
     body_html: &str,
 ) -> String {
     let subtitle_html = subtitle
         .map(|text| format!("<p class=\"post-subheading\">{}</p>", escape_html(text)))
         .unwrap_or_default();
+    let timestamps_html = render_timestamps_block(published, edited);
     let tags_html = render_tag_links(tags, "", "post-tags");
 
     render_template(
@@ -224,6 +308,7 @@ pub(crate) fn render_blog_post_content(
         &[
             ("post_title", &escape_html(title)),
             ("post_subheading_block", &subtitle_html),
+            ("post_timestamps_block", &timestamps_html),
             ("post_tags_block", &tags_html),
             ("post_body", body_html),
         ],
@@ -269,12 +354,22 @@ fn render_blog_index_cards(posts: &[BlogPostMeta], base_url: &str) -> String {
             .as_ref()
             .map(|text| format!("<p class=\"card-subheading\">{}</p>", escape_html(text)))
             .unwrap_or_default();
+        let date_html = post
+            .published
+            .as_ref()
+            .map(|d| format!(
+                "<p class=\"card-date\"><time datetime=\"{}\">{}</time></p>",
+                escape_html(d),
+                escape_html(&format_date(d))
+            ))
+            .unwrap_or_default();
         let tags_html = render_tag_links(&post.tags, base_url, "card-tags");
 
         cards.push_str(&format!(
-            "<article class=\"post-card\"><h2 class=\"card-title\"><a href=\"{}\">{}</a></h2>{}{}<p class=\"card-excerpt\">{}</p></article>",
+            "<article class=\"post-card\"><h2 class=\"card-title\"><a href=\"{}\">{}</a></h2>{}{}{}<p class=\"card-excerpt\">{}</p></article>",
             post_href,
             escape_html(&post.title),
+            date_html,
             subtitle,
             tags_html,
             escape_html(&post.excerpt)

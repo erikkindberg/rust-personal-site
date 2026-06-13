@@ -15,6 +15,8 @@ pub(crate) struct BlogPostMeta {
     pub(crate) title: String,
     pub(crate) subtitle: Option<String>,
     pub(crate) tags: Vec<String>,
+    pub(crate) published: Option<String>,
+    pub(crate) edited: Option<String>,
     pub(crate) excerpt: String,
 }
 
